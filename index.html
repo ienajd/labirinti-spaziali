@@ -1,4 +1,4 @@
-<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>html{color-scheme:dark}body{margin:0;font:14px system-ui}[hidden]{display:none!important}</style><title>Labirinti Spaziali</title>
+<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><link rel="manifest" href="manifest.json"><meta name="theme-color" content="#05070f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Labirinti"><link rel="apple-touch-icon" href="icon-180.png"><link rel="icon" type="image/png" href="icon-192.png"><style>html{color-scheme:dark}body{margin:0;font:14px system-ui}[hidden]{display:none!important}</style><title>Labirinti Spaziali</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&amp;family=Nunito:wght@400;600;700;800&amp;display=swap">
 <style>/* Layout: il gioco occupa tutto lo schermo; menu, comandi e zaino stanno sopra la scena 3D come cruscotto. Un solo aspetto, scuro: è un videogioco nello spazio. */
@@ -116,8 +116,17 @@ h1{font-family:var(--display);font-weight:700;font-size:clamp(34px,7vw,68px);lin
 @media (prefers-reduced-motion:reduce){.lvcard{transition:none}#flash.go,#toast.pop{animation:none}}
 
 #app.flat .keys::after{content:" · Su questo computer la grafica 3D non è disponibile: il gioco usa la vista dall'alto.";color:var(--gold)}
+
+/* niente selezione, zoom o menu del browser mentre si gioca */
+html,body{overscroll-behavior:none}
+#app,#app *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+#c,#hud,#pad,#pad button{touch-action:none}
+button{touch-action:manipulation}
+.overlay{touch-action:pan-y}
+#homeHint{color:var(--gold)}
+@media (pointer:coarse){#pad{grid-template-columns:repeat(3,66px);grid-template-rows:repeat(3,66px);gap:6px}#pad button{font-size:22px}#pad .use{font-size:14px}#prompt{bottom:250px}}
 </style>
-</head><body><div id="app">
+<style>#hud{padding-top:max(12px,env(safe-area-inset-top,0px));padding-bottom:max(12px,env(safe-area-inset-bottom,0px))}</style></head><body><div id="app">
   <canvas id="c" tabindex="0" aria-label="Labirinto in 3D"></canvas>
   <div id="flash"></div>
 
@@ -128,6 +137,8 @@ h1{font-family:var(--display);font-weight:700;font-size:clamp(34px,7vw,68px);lin
       <p class="lead">Scegli una missione. Usa la testa prima delle gambe.</p>
       <div id="cards"></div>
       <p class="keys">Frecce o WASD per muoverti · Spazio per usare teletrasporti, leve e cabine · M per vedere tutta la mappa</p>
+      <p class="keys" id="homeHint" hidden>Su iPad e iPhone: tocca Condividi e poi «Aggiungi alla schermata Home». Si apre come un'app, a tutto schermo.</p>
+      <p class="keys" id="touchHint" hidden>Con le dita: striscia sullo schermo per muoverti, oppure usa le frecce in basso. Il tasto USA serve per teletrasporti, leve e cabine.</p>
     </div>
   </section>
 
@@ -140,6 +151,7 @@ h1{font-family:var(--display);font-weight:700;font-size:clamp(34px,7vw,68px);lin
       </div>
       <div class="btns">
         <button id="bView" type="button">Mappa</button>
+        <button id="bFull" type="button">Schermo intero</button>
         <button id="bHelp" type="button">Aiuto</button>
         <button id="bSound" type="button">Suono: sì</button>
         <button id="bRestart" type="button">Ricomincia</button>
@@ -763,7 +775,7 @@ function buildMenu() {
     b.type = 'button';
     b.innerHTML = '<span class="masc">' + lv.mascot + '</span><span class="n">Livello ' + R.n + '</span><h2>' + lv.title + '</h2><p>' + R.tagline + '</p>' +
       '<span class="foot"><span class="dots" title="Difficoltà">' + '●'.repeat(R.diff) + '○'.repeat(4 - R.diff) + '</span>' + (best[id] != null ? '<span class="best">' + RANK[best[id]] + '</span>' : '<span>Da giocare</span>') + '</span>';
-    b.addEventListener('click', () => startLevel(id));
+    b.addEventListener('click', () => { goFull(true); startLevel(id); });
     const pv = () => { if (MODE === 'menu' && LVL.id !== id) { loadLevel(id); buildScene(); } };
     b.addEventListener('mouseenter', pv); b.addEventListener('focus', pv);
     cards.appendChild(b);
@@ -954,10 +966,35 @@ const KEYS = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRig
 function toggleView() { cam.zt = cam.zt > .5 ? 0 : 1; $('#bView').textContent = cam.zt > .5 ? 'Vicino' : 'Mappa'; }
 function openHelp(v) { $('#help').hidden = !v; if (v) $('#helpClose').focus(); else $('#c').focus(); }
 function askConfirm(title, text, yes) { $('#confTitle').textContent = title; $('#confText').textContent = text; $('#confirm').hidden = false; $('#confYes').onclick = () => { $('#confirm').hidden = true; yes(); }; $('#confYes').focus(); }
+function goFull(on) {
+  const d = document, root = d.documentElement, cur = d.fullscreenElement || d.webkitFullscreenElement;
+  try {
+    if (on == null ? cur : false) { (d.exitFullscreen || d.webkitExitFullscreen).call(d); return; }
+    if (cur) return;
+    const r = root.requestFullscreen || root.webkitRequestFullscreen;
+    if (r) { const p = r.call(root); if (p && p.catch) p.catch(() => {}); }
+  } catch (e) {}
+}
 function bind() {
+  // il browser non deve selezionare testo, aprire menu o ingrandire mentre si gioca
+  ['contextmenu', 'selectstart', 'dragstart', 'gesturestart', 'gesturechange', 'dblclick'].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
+  window.addEventListener('beforeunload', e => { if (MODE === 'play' && G.S && G.S.moves > 0 && !G.done) { e.preventDefault(); e.returnValue = ''; } });
+  const fsUpd = () => { $('#bFull').textContent = (document.fullscreenElement || document.webkitFullscreenElement) ? 'Esci da schermo intero' : 'Schermo intero'; };
+  document.addEventListener('fullscreenchange', fsUpd); document.addEventListener('webkitfullscreenchange', fsUpd);
+  // strisciata con il dito sulla scena
+  let sw = null; const cvs = $('#c');
+  cvs.addEventListener('pointerdown', e => { sw = e.pointerType === 'mouse' ? null : [e.clientX, e.clientY]; });
+  cvs.addEventListener('pointerup', e => { if (!sw) return; const dx = e.clientX - sw[0], dy = e.clientY - sw[1]; sw = null; if (MODE !== 'play' || Math.max(Math.abs(dx), Math.abs(dy)) < 24) return; if (Math.abs(dx) > Math.abs(dy)) doMove(Math.sign(dx), 0, true); else doMove(0, Math.sign(dy), true); });
+  cvs.addEventListener('pointercancel', () => { sw = null; });
+  let top = false; try { top = window.top === window.self; } catch (e) {}
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const alone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches;
+  if (top && ios && !alone) $('#homeHint').hidden = false;
+  if (matchMedia('(pointer: coarse)').matches) $('#touchHint').hidden = false;
   window.addEventListener('keydown', e => {
     if (MODE !== 'play') return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && k !== 'Tab' && !/^F\d+$/.test(k)) e.preventDefault();
     if (!$('#confirm').hidden) { if (k === 'Escape') $('#confirm').hidden = true; return; }
     if (!$('#help').hidden) { if (k === 'Escape' || k === 'h') openHelp(false); return; }
     if (!$('#win').hidden) return;
@@ -972,7 +1009,7 @@ function bind() {
   window.addEventListener('blur', () => { held = null; });
   window.addEventListener('resize', resize);
   $('#c').addEventListener('wheel', e => { if (MODE !== 'play') return; e.preventDefault(); cam.zt = Math.max(0, Math.min(1, cam.zt + (e.deltaY > 0 ? .12 : -.12))); }, { passive: false });
-  $('#bView').onclick = toggleView; $('#bHelp').onclick = () => openHelp(true); $('#helpClose').onclick = () => openHelp(false);
+  $('#bView').onclick = toggleView; $('#bFull').onclick = () => goFull(); $('#bHelp').onclick = () => openHelp(true); $('#helpClose').onclick = () => openHelp(false);
   $('#bSound').onclick = () => { muted = !muted; $('#bSound').textContent = 'Suono: ' + (muted ? 'no' : 'sì'); };
   $('#bRestart').onclick = () => askConfirm('Ricominciare?', 'Riparti dal VIA con lo zaino vuoto.', () => startLevel(LVL.id));
   $('#bMenu').onclick = () => askConfirm('Tornare al menu?', 'Questa partita non viene salvata.', showMenu);
